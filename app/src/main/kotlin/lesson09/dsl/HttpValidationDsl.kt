@@ -29,12 +29,21 @@ class HttpResponseValidation(
         StatusValidation(response.status, collector).block()
     }
 
-    fun header(name: String, block: HeaderValidation.() -> Unit) {
-        val values = response.headers.entries
+    fun header(
+        name: String,
+        block: HeaderValidation.() -> Unit,
+    ) {
+        val matchingEntries = response.headers.entries
             .filter { it.key.equals(name, ignoreCase = true) }
-            .flatMap { it.value }
 
-        HeaderValidation(name, values, collector).block()
+        val values = matchingEntries.flatMap { it.value }
+
+        HeaderValidation(
+            name = name,
+            values = values,
+            isPresent = matchingEntries.isNotEmpty(),
+            collector = collector,
+        ).block()
     }
 
     fun body(block: BodyValidation.() -> Unit) {
@@ -62,6 +71,7 @@ class StatusValidation(
 class HeaderValidation(
     private val name: String,
     private val values: List<String>,
+    private val isPresent: Boolean,
     private val collector: MismatchCollector,
 ) {
     private val path: String
@@ -72,7 +82,7 @@ class HeaderValidation(
             collector.addValue(
                 path = path,
                 expected = "value $expected",
-                actualText = values.toString(),
+                actualText = actualHeaderText(),
             )
         }
     }
@@ -82,7 +92,7 @@ class HeaderValidation(
             collector.addValue(
                 path = path,
                 expected = "prefix $prefix",
-                actualText = values.toString(),
+                actualText = actualHeaderText(),
             )
         }
     }
@@ -92,10 +102,19 @@ class HeaderValidation(
             collector.addValue(
                 path = path,
                 expected = "matching value",
-                actualText = values.toString(),
+                actualText = actualHeaderText(),
             )
         }
     }
+
+
+
+    private fun actualHeaderText(): String =
+        if (!isPresent) {
+            "<missing>"
+        } else {
+            values.toString()
+        }
 }
 
 

@@ -1,34 +1,126 @@
-# Свой DSL
+# HTTP response validation DSL
 
-Создайте DSL для проверки HTTP-ответов и перепишите через него шесть функций `check01`–`check06` из `lesson09.legacy`. Новые проверки должны возвращать список расхождений с ожиданиями.
+This project provides a small Kotlin DSL for validating in-memory `HttpResponse`
+objects. Instead of returning only `true` or `false`, `validate` collects all
+mismatches found during the check.
 
-Полное условие, требования к тестам и необязательное усложнение — в [docs/lesson09.md](docs/lesson09.md).
+## Example
 
-## Что уже есть в проекте
+```kotlin
+val result = validate(response) {
+    status {
+        equalTo(200)
+    }
 
-- `app/src/main/kotlin/lesson09/HttpResponse.kt` — модель ответа.
-- `app/src/main/kotlin/lesson09/legacy/Checks.kt` — шесть исходных проверок.
-- `app/src/main/kotlin/lesson09/support/json/Json.kt` — готовый парсер JSON. Писать свой парсер не нужно.
-- `app/src/test/kotlin/lesson09/LegacySmokeTest.kt` — начальные тесты исходных проверок.
-- `app/src/test/kotlin/lesson09/support/json/JsonParserTest.kt` — тесты готового парсера.
+    header("Content-Type") {
+        startsWith("application/json")
+    }
 
-Реализацию DSL добавьте в пакет `lesson09.dsl`, свои тесты — в `app/src/test/kotlin/lesson09`. Предоставленные исходники и тесты оставьте без изменений.
+    body {
+        json {
+            field("id") {
+                present()
+            }
+        }
+    }
+}
 
-## Запуск
+if (!result.isSuccess) {
+    println(result.render())
+}
+```
 
-Установите JDK 25 и укажите его в `JAVA_HOME`. В IntelliJ IDEA выберите этот же JDK для Gradle JVM. Gradle устанавливать отдельно не нужно: проект использует Wrapper. При первом запуске нужен доступ к интернету для загрузки Gradle и зависимостей.
+## Result paths
 
-В проекте используются Kotlin 2.4.10, Gradle 9.5.1 и JUnit 6.1.3. Запускайте команды из корня репозитория:
+Each mismatch has a `path` that identifies the checked part of the response:
 
-| Действие | Bash | PowerShell |
-|---|---|---|
-| Сборка и тесты | `bash ./gradlew build` | `.\gradlew.bat build` |
-| Тесты | `bash ./gradlew :app:test` | `.\gradlew.bat :app:test` |
+| Path | Meaning |
+|---|---|
+| `status` | HTTP response status code |
+| `headers.<Name>` | All values of a response header |
+| `body` | Raw response body |
+| `body.json` | Parsed flat JSON object |
+| `body.json.<field>` | A field of the parsed JSON object |
 
-Начальные тесты должны проходить до начала работы. По мере реализации DSL добавляйте собственные тесты из условия задания.
+Examples:
 
-Если продолжаете работу в своём проекте курса, перенесите каталоги `app/src/main/kotlin/lesson09`, `app/src/test/kotlin/lesson09` и файл `docs/lesson09.md`. В модуле должны быть подключены Kotlin/JVM, JUnit Jupiter и `kotlin-test-junit5`, а задача тестирования должна использовать `useJUnitPlatform()`; настройки можно взять из `app/build.gradle.kts` и `gradle/libs.versions.toml`.
+- `status`
+- `headers.Content-Type`
+- `body`
+- `body.json`
+- `body.json.id`
 
-## Сдача
+## Status and body rules
 
-Передайте преподавателю ссылку на свой репозиторий. Добавьте в README пример использования DSL, пример расхождений и объяснение решения.
+- `status { equalTo(expected) }` succeeds only when the response status is equal
+  to `expected`.
+- `body { absent() }` succeeds for `null` and `""`.
+- `body { present() }` succeeds for any non-empty string, including a string
+  containing only whitespace.
+- A whitespace-only body is not considered empty.
+- JSON is parsed only when `body { json { ... } }` is explicitly used.
+- `body { present() }` does not parse or validate the body contents.
+
+## Header rules
+
+- Header names are matched case-insensitively.
+- Header values are compared case-sensitively.
+- Values are not trimmed and are not split by commas.
+- If the response contains several header keys that differ only by letter case,
+  their values are combined for validation.
+- Combined values keep the iteration order of the `headers` map. Within each
+  key, values keep their original order.
+- Each header operation succeeds if at least one combined value satisfies it.
+- Different operations may succeed on different values.
+
+For example, these checks both succeed for the values
+`["application/json", "text/html"]`:
+
+```kotlin
+header("Accept") {
+    contains("application/json")
+    contains("text/html")
+}
+```
+
+The single value `"application/json,text/html"` does not satisfy either check,
+because it is not split into separate values.
+
+Prefix matching uses `String.startsWith`. Therefore,
+`"application/jsonp"` starts with `"application/json"`.
+
+## Failed header checks
+
+For a failed header check, the actual value is rendered as:
+
+- `<missing>` when no header key matching the requested name exists;
+- `[]` when a matching key exists but its value list is empty;
+- `[value1, value2]` when one or more values were found.
+
+## JSON rules
+
+- `body { json { ... } }` requires the body to be a valid flat JSON object.
+- If parsing fails, one mismatch is reported for `body.json`, and field checks
+  are not executed.
+- `field(name) { present() }` succeeds when the JSON object contains the key,
+  even if its value is `null`.
+- `field(name) { equalTo(...) }` supports `String`, `Long`, and `Boolean`
+  values, matching the supported JSON parser value types.
+
+## DSL nesting
+
+The DSL uses `@DslMarker` to prevent implicit use of an outer receiver inside
+a nested block. For example, `status { ... }` cannot be called implicitly inside
+`body { ... }`.
+
+An explicit labeled receiver is still allowed:
+
+```kotlin
+validate(response) {
+    body {
+        this@validate.status {
+            equalTo(200)
+        }
+    }
+}
+```
