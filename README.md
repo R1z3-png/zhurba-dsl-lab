@@ -50,6 +50,26 @@ Examples:
 - `body.json`
 - `body.json.id`
 
+## Running tests
+
+Run all tests with the Gradle wrapper:
+
+```bash
+./gradlew test
+```
+
+On Windows:
+
+```bash
+gradlew.bat test
+```
+
+To run only the DSL test class:
+
+```bash
+./gradlew test --tests "lesson09.dsl.HttpChecksDslTest"
+```
+
 ## Status and body rules
 
 - `status { equalTo(expected) }` succeeds only when the response status is equal
@@ -142,3 +162,28 @@ Their DSL-based counterparts have the same success/failure outcome.
 Additional headers and JSON fields do not affect the result. `check02` does not
 parse JSON, so a non-empty body with invalid JSON can still pass when the status
 and header conditions are satisfied.
+
+## Mismatch example
+
+For a response with status `500`, header `Content-Type: text/plain`, and body
+`{}`, this specification reports three independent mismatches:
+
+```text
+status: expected 200, actual 500
+headers.Content-Type: expected prefix application/json, actual [text/plain]
+body.json.id: expected present, actual <missing: field is absent>
+```
+
+A failed status check does not stop header or body checks.
+
+## How it works
+
+- `validate` creates a new `MismatchCollector` for every run and returns an
+  immutable `ValidationResult`.
+- Each DSL block has its own receiver: response, status, header, body, JSON
+  object, and JSON field. A receiver exposes only operations for its level.
+- `@DslMarker` prevents implicit calls to an outer block from a nested block.
+- A custom header check uses `satisfies(description) { value -> ... }`. It
+  succeeds if at least one header value satisfies the predicate.
+- Reusing a stored specification is safe: every `validate` call gets its own
+  collector, so previous results remain unchanged.
