@@ -124,3 +124,21 @@ validate(response) {
     }
 }
 ```
+
+## Legacy checks
+
+The original `check01`–`check06` functions remain the reference implementation.
+Their DSL-based counterparts have the same success/failure outcome.
+
+| Function | Passes when |
+|---|---|
+| `check01` | Status is `204`; body is `null` or `""` |
+| `check02` | Status is `200`; at least one `Content-Type` value starts with `application/json`; body is non-null and non-empty |
+| `check03` | Status is `200`; `Accept` contains both exact values `application/json` and `text/html` |
+| `check04` | Status is `200`; body is a valid flat JSON object; `id` is present, including `null`; `name` equals `"Ivanov"` |
+| `check05` | Status is `200`; body is a valid flat JSON object; `id` equals `42`; `active` equals `true` |
+| `check06` | Status is `422`; at least one `Content-Type` value starts with `application/json`; body is a valid flat JSON object; `error` equals `"invalid"`; `retry` equals `false` |
+
+Additional headers and JSON fields do not affect the result. `check02` does not
+parse JSON, so a non-empty body with invalid JSON can still pass when the status
+and header conditions are satisfied.
