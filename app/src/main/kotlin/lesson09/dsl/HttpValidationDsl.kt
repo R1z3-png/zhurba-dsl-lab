@@ -97,11 +97,14 @@ class HeaderValidation(
         }
     }
 
-    fun matches(predicate: (String) -> Boolean) {
+    fun satisfies(
+        description: String,
+        predicate: (String) -> Boolean,
+    ) {
         if (values.none(predicate)) {
             collector.addValue(
                 path = path,
-                expected = "matching value",
+                expected = description,
                 actualText = actualHeaderText(),
             )
         }
